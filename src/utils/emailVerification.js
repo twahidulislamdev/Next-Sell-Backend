@@ -10,7 +10,7 @@ const emailVerification = async (email, otp, isResend = false) => {
       <div style="max-width:600px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
         <div style="background:#f9fafb;padding:20px;text-align:center;border-bottom:1px solid #e5e7eb">
           <h1 style="color:#111827;margin:0;font-size:22px">
-            BuyGoo
+            Next Sell
           </h1>
         </div>
 
@@ -49,12 +49,12 @@ const emailVerification = async (email, otp, isResend = false) => {
 
           <p style="font-size:14px;margin-top:30px">
             Regards,<br />
-            <strong>BuyGoo Team</strong>
+            <strong>Next Sell Team</strong>
           </p>
         </div>
 
         <div style="background:#f9fafb;padding:15px;text-align:center;font-size:12px;color:#9ca3af;border-top:1px solid #e5e7eb">
-          © ${new Date().getFullYear()} BuyGoo. All rights reserved.
+          © ${new Date().getFullYear()} Next Sell. All rights reserved.
         </div>
       </div>
     `;
@@ -71,7 +71,7 @@ const emailVerification = async (email, otp, isResend = false) => {
 
   const resend = new Resend(apiKey);
   const { data, error } = await resend.emails.send({
-    from: "BuyGoo <onboarding@resend.dev>",
+    from: "Next Sell <onboarding@resend.dev>",
     to: [email],
     subject: subject,
     html: htmlContent,
@@ -81,7 +81,6 @@ const emailVerification = async (email, otp, isResend = false) => {
     console.error("Resend API error:", error);
     throw new Error(error.message);
   }
-
   return data;
 };
 

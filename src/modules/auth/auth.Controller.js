@@ -1,198 +1,395 @@
+const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const crypto = require("crypto");
-const userSchema = require("./auth.model");
-const { validationResult } = require("express-validator");
-const CustomerVerificationToken = require("./VerificationToken.model");
-const { v4: uuidv4 } = require("uuid");
+const { jwtConfig } = require("../../config/jwt");
+const UserSchema = require("./auth.model");
+const Session = require("./session.model");
 const emailVerification = require("../../utils/emailVerification");
 const emailValidation = require("../../utils/emailValidation");
+const {
+  generateAccessToken,
+  generateRefreshToken,
+} = require("../../utils/generate.token");
 
-exports.Signup = async (req, res) => {
+// ============ SignUp Controller =================
+const SignUp = async (req, res) => {
   try {
     const { name, email, phone, password, role } = req.body;
 
-    if (!name) return res.status(400).json({ message: "Name Is Required" });
-    if (!email) return res.status(400).json({ message: "Email Is Required" });
+    // Check Required Fields
+    if (!name) return res.status(400).json({ message: "Error: Name Required" });
+    if (!email)
+      return res.status(400).json({ message: "Error: Email Required" });
     if (!password)
-      return res.status(400).json({ message: "Password Is Required" });
+      return res.status(400).json({ message: "Error: Password Required" });
 
+    // Validate Email Format
     if (!emailValidation(email)) {
-      return res.json({
+      return res.status(400).json({
         message: "Error: Email Format Is Not Correct",
       });
     }
 
-    // Check If The Email Already Exists
-    const existingCustomer = await userSchema.findOne({ email });
-    if (existingCustomer) {
-      return res.status(400).json({ message: "Email Already Exists" });
-    }
+    // Check Duplicate Email In Database
+    const duplicateEmail = await UserSchema.findOne({ email });
+    if (duplicateEmail)
+      return res.status(409).json({ message: "Email Already Exists" });
 
-    // Generate secure 6-digit OTP code using crypto
+    // Generate OTP Using Crypto
     const otp = crypto.randomInt(100000, 999999).toString();
-    const expireOtp = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes validity
+    const expireOtp = new Date(Date.now() + 5 * 60 * 1000);
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newCustomer = new userSchema({
+    // Hash Password Using Bcrypt
+    const hash = await bcrypt.hash(password, 10);
+    const user = new UserSchema({
       name,
       email,
       phone,
-      password: hashedPassword,
+      password: hash,
       role,
       otp,
       expireOtp,
     });
+
+    // Generate New Tokens For SignUp User
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    // Hash Refresh Token For Security
+    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+
+    // Send OTP to User Email
     await emailVerification(email, otp);
-    await newCustomer.save();
 
-    // Generate A Verification Token
-    const verificationToken = new CustomerVerificationToken({
-      customerId: newCustomer._id,
-      token: uuidv4(),
+    // Set Token To User
+    user.accessToken = accessToken;
+    user.refreshToken = refreshTokenHash;
+
+    // Save User
+    await user.save();
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    await verificationToken.save();
 
-    return res.status(201).json({ message: "User Registered Successfully" });
+    return res
+      .status(201)
+      .json({ message: "User registered successfully", user });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Error registering User" });
+    return res.status(500).json({ error: error.message });
   }
 };
 
-exports.VerifyEmail = async (req, res) => {
-  try {
-    const { email, otp } = req.body;
-    if (!email || !otp) {
-      return res.status(400).json({ message: "Email and OTP are required" });
-    }
-
-    const user = await userSchema.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (user.isEmailVerified) {
-      return res.status(400).json({ message: "Email is already verified" });
-    }
-
-    if (user.otp !== otp || !user.expireOtp || user.expireOtp < new Date()) {
-      return res.status(400).json({ message: "Invalid or expired OTP" });
-    }
-
-    user.isEmailVerified = true;
-    user.otp = undefined;
-    user.expireOtp = undefined;
-    await user.save();
-
-    return res.status(200).json({ message: "Email verified successfully" });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Error verifying email" });
-  }
-};
-
-exports.ResendOtp = async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    const user = await userSchema.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (user.isEmailVerified) {
-      return res.status(400).json({ message: "Email is already verified" });
-    }
-
-    // Check if current OTP is still valid (prevent spamming resend)
-    if (user.expireOtp && user.expireOtp > new Date()) {
-      return res.status(400).json({
-        message: "OTP is still valid. Please wait before requesting a new one.",
-      });
-    }
-
-    const otp = crypto.randomInt(100000, 999999).toString();
-    const expireOtp = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes validity
-
-    user.otp = otp;
-    user.expireOtp = expireOtp;
-    await user.save();
-
-    await emailVerification(email, otp, true);
-
-    return res.status(200).json({ message: "OTP resent successfully" });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Error resending OTP" });
-  }
-};
-
-exports.Login = async (req, res) => {
+// ========================= Login Controller =========================
+const Login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res
-        .status(400)
-        .json({ message: "Email and password are required" });
-    }
+    const ip = req.ip;
+    const userAgent = req.get("User-Agent");
 
-    const user = await userSchema.findOne({ email }).select("+password");
-    if (!user) {
-      return res.status(400).json({ message: "Invalid email or password" });
-    }
+    const user = await UserSchema.findOne({ email }).select("+password");
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const isPasswordMatch = await bcrypt.compare(password, user.password);
-    if (!isPasswordMatch) {
-      return res.status(400).json({ message: "Invalid email or password" });
-    }
+    // Compare Password
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(400).json({ message: "Wrong password" });
 
-    if (!user.isEmailVerified) {
+    // Check Verification Status
+    if (!user.isVerified && !user.isEmailVerified) {
       return res.status(403).json({
         message: "Email not verified. Please verify your email first.",
       });
     }
 
-    // Generate Access & Refresh Tokens
-    const accessToken = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_ACCESS_SECRET,
-      { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "30m" },
+    // Revoke old sessions (so old tokens become invalid)
+    await Session.updateMany(
+      { user: user._id, revoked: false },
+      { $set: { revoked: true } },
     );
 
-    const refreshToken = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_REFRESH_SECRET,
-      { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d" },
-    );
+    // Generate New Tokens For Login User
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
 
-    // Save refresh token in DB
-    user.refreshToken.push({ token: refreshToken });
+    // Hash Refresh Token For Security
+    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+
+    // Create Session For User Login
+    const session = new Session({
+      user: user._id,
+      ip,
+      revoked: false,
+      refreshToken: refreshTokenHash,
+      userAgent,
+    });
+    await session.save();
+
+    // Set New Tokens To User
+    user.accessToken = accessToken;
+    user.refreshToken = refreshTokenHash;
+
+    // Save User
     await user.save();
 
-    // Set refresh token in HTTP-only cookie
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: "Strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    // Strip password field out for safety
+    user.password = undefined;
+
+    return res.status(200).json({ message: "Login successful", user });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// ============ Refresh Token Controller =================
+const RefreshToken = async (req, res) => {
+  try {
+    let refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+    if (!refreshToken && req.headers.authorization) {
+      if (req.headers.authorization.startsWith("Bearer ")) {
+        refreshToken = req.headers.authorization.split(" ")[1];
+      } else {
+        refreshToken = req.headers.authorization;
+      }
+    }
+
+    if (!refreshToken)
+      return res.status(401).json({ message: "Refresh Token Is Not Found" });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, jwtConfig().secret);
+    } catch {
+      return res
+        .status(401)
+        .json({ message: "Invalid Or Expired Refresh Token" });
+    }
+
+    const user = await UserSchema.findById(decoded.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Find all active login sessions for this user
+    const sessions = await Session.find({ user: user._id, revoked: false });
+
+    // Check which session matches this specific refresh token
+    let session = null;
+    for (const s of sessions) {
+      const match = await bcrypt.compare(refreshToken, s.refreshToken);
+      if (match) {
+        session = s;
+        break;
+      }
+    }
+
+    // If no matching session is found, they were logged out or the token was revoked
+    if (!session)
+      return res
+        .status(404)
+        .json({ message: "Invalid Or Expired Refresh Token" });
+
+    // Token Rotation
+    const accessToken = generateAccessToken(user);
+    const newRefreshToken = generateRefreshToken(user);
+
+    // Hash the new refresh token
+    const newRefreshTokenHash = await bcrypt.hash(newRefreshToken, 10);
+
+    // Update the session in the database with the new refresh token
+    session.refreshToken = newRefreshTokenHash;
+    await session.save();
+
+    // Update the user's latest tokens in their database record
+    user.accessToken = accessToken;
+    user.refreshToken = newRefreshTokenHash;
+    await user.save();
+
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     return res.status(200).json({
-      message: "Login successful",
+      message: "Access Token Refreshed Successfully",
       accessToken,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Error logging in" });
+    return res
+      .status(401)
+      .json({ message: "Invalid Or Expired Refresh Token" });
   }
+};
+
+// ============ LogOut Controller =================
+const LogOut = async (req, res) => {
+  try {
+    let refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+    if (!refreshToken && req.headers.authorization) {
+      if (req.headers.authorization.startsWith("Bearer ")) {
+        refreshToken = req.headers.authorization.split(" ")[1];
+      } else {
+        refreshToken = req.headers.authorization;
+      }
+    }
+
+    if (!refreshToken)
+      return res.status(401).json({ message: "Refresh Token Is Required" });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, jwtConfig().secret);
+    } catch {
+      return res.status(401).json({ message: "Invalid Refresh Token" });
+    }
+
+    const sessions = await Session.find({ user: decoded.id, revoked: false });
+
+    let currentSession = null;
+    for (const session of sessions) {
+      const match = await bcrypt.compare(refreshToken, session.refreshToken);
+      if (match) {
+        currentSession = session;
+        break;
+      }
+    }
+
+    if (!currentSession)
+      return res.status(404).json({ message: "Session Not Found" });
+
+    currentSession.revoked = true;
+    await currentSession.save();
+
+    res.clearCookie("refreshToken");
+    return res.status(200).json({ message: "Logout Successful" });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+// ============ LogOut All Devices Controller =================
+const LogOutAll = async (req, res) => {
+  try {
+    const cookieRefreshToken = req.cookies?.refreshToken;
+    const authHeader = req.headers.authorization;
+    let userId = null;
+
+    if (cookieRefreshToken) {
+      try {
+        const decoded = jwt.verify(cookieRefreshToken, jwtConfig().secret);
+        if (decoded?.id) userId = decoded.id;
+      } catch (_) {}
+    }
+
+    if (!userId) {
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ message: "Authentication Required" });
+      }
+
+      const token = authHeader.split(" ")[1];
+      try {
+        const decoded = jwt.verify(token, jwtConfig().secret);
+        userId = decoded.id;
+      } catch {
+        return res
+          .status(401)
+          .json({ message: "Invalid Or Expired Access Token" });
+      }
+    }
+
+    await Session.updateMany(
+      { user: userId, revoked: false },
+      { $set: { revoked: true } },
+    );
+
+    await UserSchema.findByIdAndUpdate(userId, {
+      $set: { accessToken: "", refreshToken: "" },
+    });
+
+    res.clearCookie("refreshToken");
+    return res
+      .status(200)
+      .json({ message: "Logout From All Devices Successful" });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+// ============ Verify OTP Controller =================
+const VerifyOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await UserSchema.findOne({ email });
+
+    if (!user) return res.status(400).json({ message: "User Not Found" });
+
+    if (user.isVerified || user.isEmailVerified)
+      return res.status(400).json({ message: "User Already Verified" });
+
+    if (user.otp !== otp || user.expireOtp < Date.now()) {
+      return res.status(400).json({ message: "Incorrect OTP or Expired OTP" });
+    }
+
+    user.isVerified = true;
+    user.isEmailVerified = true;
+    user.otp = undefined;
+    user.expireOtp = undefined;
+
+    await user.save();
+
+    return res.status(200).json({ message: "Email Verified Successfully" });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+// ============ Resend OTP Controller =================
+const ResendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await UserSchema.findOne({ email });
+
+    if (!user) return res.status(400).json({ message: "User Not Found" });
+
+    if (user.isVerified || user.isEmailVerified)
+      return res.status(400).json({ message: "Email Already Verified" });
+
+    if (user.expireOtp && user.expireOtp > Date.now()) {
+      return res
+        .status(400)
+        .json({ message: "Wait 5 minutes before requesting new OTP" });
+    }
+
+    const otp = crypto.randomInt(100000, 999999).toString();
+
+    user.otp = otp;
+    user.expireOtp = Date.now() + 5 * 60 * 1000;
+
+    await user.save();
+
+    await emailVerification(email, otp, true);
+
+    return res.status(200).json({ message: "New OTP Sent Successfully" });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+module.exports = {
+  SignUp,
+  Login,
+  RefreshToken,
+  LogOut,
+  LogOutAll,
+  VerifyOtp,
+  ResendOtp,
 };

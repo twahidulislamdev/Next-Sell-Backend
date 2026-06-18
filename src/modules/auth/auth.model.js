@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
-const userSchema = new Schema(
+const UserSchema = new Schema(
   {
     name: {
       type: String,
@@ -42,28 +42,17 @@ const userSchema = new Schema(
       type: Boolean,
       default: false,
     },
-    refreshToken: [
-      {
-        token: {
-          type: String,
-        },
-        createdAt: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
-  },
-  {
-    createdAt: {
-      type: Date,
-      default: Date.now,
+    isVerified: {
+      type: Boolean,
+      default: false,
     },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
+    accessToken: {
+      type: String,
+    },
+    refreshToken: {
+      type: String,
     },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
-module.exports = mongoose.model("UserList", userSchema);
+module.exports = mongoose.model("UserList", UserSchema);
