@@ -13,7 +13,7 @@ exports.generateAccessToken = (user) => {
       role: user.role,
     },
     JwtSecret,
-    { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "30m" },
+    { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "15m" },
   );
 };
 

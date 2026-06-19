@@ -19,10 +19,6 @@ const sessionSchema = new mongoose.Schema(
       type: String,
       required: [true, "User Agent Is Required"],
     },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
     refreshToken: {
       type: String,
       required: [true, "Refresh Token Hash Is Required"],

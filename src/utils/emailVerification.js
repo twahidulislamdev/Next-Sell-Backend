@@ -1,16 +1,28 @@
-const { Resend } = require("resend");
+const nodemailer = require("nodemailer");
 
 const emailVerification = async (email, otp, isResend = false) => {
-  const apiKey = process.env.RESEND_API_KEY;
-  const subject = isResend
-    ? "Your Resend OTP Verification Code"
-    : "Your OTP Verification Code";
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    auth: {
+      user: process.env.EMAIL_ADDRESS,
+      pass: process.env.EMAIL_APP_PASSWORD,
+    },
+  });
 
-  const htmlContent = `
+  try {
+    await transporter.sendMail({
+      from: `"Next Sell BD" <${process.env.EMAIL_ADDRESS}>`,
+      to: email,
+      subject: isResend
+        ? "Your Resend OTP Verification Code"
+        : "Your OTP Verification Code",
+      html: `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
         <div style="background:#f9fafb;padding:20px;text-align:center;border-bottom:1px solid #e5e7eb">
           <h1 style="color:#111827;margin:0;font-size:22px">
-            Next Sell
+            Next Sell BD
           </h1>
         </div>
 
@@ -49,39 +61,21 @@ const emailVerification = async (email, otp, isResend = false) => {
 
           <p style="font-size:14px;margin-top:30px">
             Regards,<br />
-            <strong>Next Sell Team</strong>
+            <strong>Next Sell BD Team</strong>
           </p>
         </div>
 
         <div style="background:#f9fafb;padding:15px;text-align:center;font-size:12px;color:#9ca3af;border-top:1px solid #e5e7eb">
-          © ${new Date().getFullYear()} Next Sell. All rights reserved.
+          © ${new Date().getFullYear()} Prime Store. All rights reserved.
         </div>
       </div>
-    `;
-
-  if (!apiKey) {
-    console.log("=========================================");
-    console.log(`[DEV/LOCAL EMAIL VERIFICATION]`);
-    console.log(`To: ${email}`);
-    console.log(`Subject: ${subject}`);
-    console.log(`OTP Code: ${otp}`);
-    console.log("=========================================");
-    return { success: true, localMock: true };
+    `,
+    });
+    return { success: true, message: "Email sent successfully" };
+  } catch (error) {
+    console.error("Email sending error:", error);
+    return { success: false, error: error.message };
   }
-
-  const resend = new Resend(apiKey);
-  const { data, error } = await resend.emails.send({
-    from: "Next Sell <onboarding@resend.dev>",
-    to: [email],
-    subject: subject,
-    html: htmlContent,
-  });
-
-  if (error) {
-    console.error("Resend API error:", error);
-    throw new Error(error.message);
-  }
-  return data;
 };
 
 module.exports = emailVerification;

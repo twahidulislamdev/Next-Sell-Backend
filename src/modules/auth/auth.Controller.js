@@ -30,6 +30,9 @@ const SignUp = async (req, res) => {
       });
     }
 
+    // Block privileged role self-assignment from client
+    const safeRole = role === "admin" ? "user" : role;
+
     // Check Duplicate Email In Database
     const duplicateEmail = await UserSchema.findOne({ email });
     if (duplicateEmail)
@@ -46,38 +49,27 @@ const SignUp = async (req, res) => {
       email,
       phone,
       password: hash,
-      role,
+      role: safeRole,
       otp,
       expireOtp,
     });
 
-    // Generate New Tokens For SignUp User
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
-
-    // Hash Refresh Token For Security
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
-
     // Send OTP to User Email
     await emailVerification(email, otp);
 
-    // Set Token To User
-    user.accessToken = accessToken;
-    user.refreshToken = refreshTokenHash;
-
-    // Save User
+    // Save User (tokens are NOT issued until email is verified)
     await user.save();
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+    return res.status(201).json({
+      message: "User registered successfully. Please verify your email.",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+      },
     });
-
-    return res
-      .status(201)
-      .json({ message: "User registered successfully", user });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -97,8 +89,8 @@ const Login = async (req, res) => {
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(400).json({ message: "Wrong password" });
 
-    // Check Verification Status
-    if (!user.isVerified && !user.isEmailVerified) {
+    // Check Verification Status — user must satisfy BOTH flags
+    if (!user.isVerified || !user.isEmailVerified) {
       return res.status(403).json({
         message: "Email not verified. Please verify your email first.",
       });
@@ -122,8 +114,8 @@ const Login = async (req, res) => {
       user: user._id,
       ip,
       revoked: false,
-      refreshToken: refreshTokenHash,
       userAgent,
+      refreshToken: refreshTokenHash,
     });
     await session.save();
 
@@ -167,7 +159,7 @@ const RefreshToken = async (req, res) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, jwtConfig().secret);
+      decoded = jwt.verify(refreshToken, jwtConfig().JwtSecret);
     } catch {
       return res
         .status(401)
@@ -247,7 +239,7 @@ const LogOut = async (req, res) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, jwtConfig().secret);
+      decoded = jwt.verify(refreshToken, jwtConfig().JwtSecret);
     } catch {
       return res.status(401).json({ message: "Invalid Refresh Token" });
     }
@@ -285,7 +277,7 @@ const LogOutAll = async (req, res) => {
 
     if (cookieRefreshToken) {
       try {
-        const decoded = jwt.verify(cookieRefreshToken, jwtConfig().secret);
+        const decoded = jwt.verify(cookieRefreshToken, jwtConfig().JwtSecret);
         if (decoded?.id) userId = decoded.id;
       } catch (_) {}
     }
@@ -297,7 +289,7 @@ const LogOutAll = async (req, res) => {
 
       const token = authHeader.split(" ")[1];
       try {
-        const decoded = jwt.verify(token, jwtConfig().secret);
+        const decoded = jwt.verify(token, jwtConfig().JwtSecret);
         userId = decoded.id;
       } catch {
         return res
@@ -335,8 +327,19 @@ const VerifyOtp = async (req, res) => {
     if (user.isVerified || user.isEmailVerified)
       return res.status(400).json({ message: "User Already Verified" });
 
-    if (user.otp !== otp || user.expireOtp < Date.now()) {
-      return res.status(400).json({ message: "Incorrect OTP or Expired OTP" });
+    // Check OTP expiry first
+    if (user.expireOtp < Date.now()) {
+      return res
+        .status(400)
+        .json({ message: "OTP has expired. Please request a new one." });
+    }
+
+    // Timing-safe OTP comparison to prevent timing attacks
+    const storedOtpBuf = Buffer.from(user.otp.padEnd(32));
+    const providedOtpBuf = Buffer.from(String(otp).padEnd(32));
+    const otpMatch = crypto.timingSafeEqual(storedOtpBuf, providedOtpBuf);
+    if (!otpMatch) {
+      return res.status(400).json({ message: "Incorrect OTP" });
     }
 
     user.isVerified = true;

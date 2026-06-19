@@ -22,8 +22,8 @@ router.post("/resend-otp", ResendOtp);
 // POST /api/v1/auth/login
 router.post("/login", Login);
 
-// GET /api/v1/auth/refresh-token
-router.get("/refresh-token", RefreshToken);
+// POST /api/v1/auth/refresh-token
+router.post("/refresh-token", RefreshToken);
 
 // POST /api/v1/auth/logout
 router.post("/logout", LogOut);
