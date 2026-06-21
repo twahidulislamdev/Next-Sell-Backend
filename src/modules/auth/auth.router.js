@@ -7,7 +7,7 @@ const {
   RefreshToken,
   LogOut,
   LogOutAll,
-} = require("./auth.Controller");
+} = require("./auth.controller");
 const router = express.Router();
 
 // POST /api/v1/auth/signup

@@ -38,10 +38,6 @@ const UserSchema = new Schema(
       enum: ["user", "admin", "vendor"],
       default: "user",
     },
-    isEmailVerified: {
-      type: Boolean,
-      default: false,
-    },
     isVerified: {
       type: Boolean,
       default: false,
@@ -53,6 +49,6 @@ const UserSchema = new Schema(
       type: String,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 module.exports = mongoose.model("UserList", UserSchema);

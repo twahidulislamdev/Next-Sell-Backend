@@ -12,7 +12,7 @@ const {
 } = require("../../utils/generate.token");
 
 // ============ SignUp Controller =================
-const SignUp = async (req, res) => {
+exports.SignUp = async (req, res) => {
   try {
     const { name, email, phone, password, role } = req.body;
 
@@ -67,7 +67,7 @@ const SignUp = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        isEmailVerified: user.isEmailVerified,
+        isVerified: user.isVerified,
       },
     });
   } catch (error) {
@@ -76,7 +76,7 @@ const SignUp = async (req, res) => {
 };
 
 // ========================= Login Controller =========================
-const Login = async (req, res) => {
+exports.Login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const ip = req.ip;
@@ -90,7 +90,7 @@ const Login = async (req, res) => {
     if (!match) return res.status(400).json({ message: "Wrong password" });
 
     // Check Verification Status — user must satisfy BOTH flags
-    if (!user.isVerified || !user.isEmailVerified) {
+    if (!user.isVerified) {
       return res.status(403).json({
         message: "Email not verified. Please verify your email first.",
       });
@@ -143,7 +143,7 @@ const Login = async (req, res) => {
 };
 
 // ============ Refresh Token Controller =================
-const RefreshToken = async (req, res) => {
+exports.RefreshToken = async (req, res) => {
   try {
     let refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!refreshToken && req.headers.authorization) {
@@ -223,7 +223,7 @@ const RefreshToken = async (req, res) => {
 };
 
 // ============ LogOut Controller =================
-const LogOut = async (req, res) => {
+exports.LogOut = async (req, res) => {
   try {
     let refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!refreshToken && req.headers.authorization) {
@@ -269,7 +269,7 @@ const LogOut = async (req, res) => {
 };
 
 // ============ LogOut All Devices Controller =================
-const LogOutAll = async (req, res) => {
+exports.LogOutAll = async (req, res) => {
   try {
     const cookieRefreshToken = req.cookies?.refreshToken;
     const authHeader = req.headers.authorization;
@@ -317,7 +317,7 @@ const LogOutAll = async (req, res) => {
 };
 
 // ============ Verify OTP Controller =================
-const VerifyOtp = async (req, res) => {
+exports.VerifyOtp = async (req, res) => {
   try {
     const { email, otp } = req.body;
     const user = await UserSchema.findOne({ email });
@@ -356,7 +356,7 @@ const VerifyOtp = async (req, res) => {
 };
 
 // ============ Resend OTP Controller =================
-const ResendOtp = async (req, res) => {
+exports.ResendOtp = async (req, res) => {
   try {
     const { email } = req.body;
     const user = await UserSchema.findOne({ email });
@@ -385,14 +385,4 @@ const ResendOtp = async (req, res) => {
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
-};
-
-module.exports = {
-  SignUp,
-  Login,
-  RefreshToken,
-  LogOut,
-  LogOutAll,
-  VerifyOtp,
-  ResendOtp,
 };
