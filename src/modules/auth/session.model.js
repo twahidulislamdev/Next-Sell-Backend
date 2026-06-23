@@ -23,6 +23,10 @@ const sessionSchema = new mongoose.Schema(
       type: String,
       required: [true, "Refresh Token Hash Is Required"],
     },
+    accessToken: {
+      type: String,
+      required: [true, "Access Token Is Required"],
+    },
   },
   { timestamps: true },
 );

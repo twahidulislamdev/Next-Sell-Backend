@@ -109,21 +109,20 @@ exports.Login = async (req, res) => {
     // Hash Refresh Token For Security
     const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
 
-    // Create Session For User Login
+    // Create Session For User Login (stores both tokens per device)
     const session = new Session({
       user: user._id,
       ip,
       revoked: false,
       userAgent,
+      accessToken,
       refreshToken: refreshTokenHash,
     });
     await session.save();
 
-    // Set New Tokens To User
+    // Save both tokens to the User record as well
     user.accessToken = accessToken;
     user.refreshToken = refreshTokenHash;
-
-    // Save User
     await user.save();
 
     res.cookie("refreshToken", refreshToken, {
@@ -136,7 +135,9 @@ exports.Login = async (req, res) => {
     // Strip password field out for safety
     user.password = undefined;
 
-    return res.status(200).json({ message: "Login successful", user });
+    return res
+      .status(200)
+      .json({ message: "Login successful", user, accessToken });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -146,20 +147,13 @@ exports.Login = async (req, res) => {
 exports.RefreshToken = async (req, res) => {
   try {
     let refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
-    if (!refreshToken && req.headers.authorization) {
-      if (req.headers.authorization.startsWith("Bearer ")) {
-        refreshToken = req.headers.authorization.split(" ")[1];
-      } else {
-        refreshToken = req.headers.authorization;
-      }
-    }
 
     if (!refreshToken)
       return res.status(401).json({ message: "Refresh Token Is Not Found" });
 
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, jwtConfig().JwtSecret);
+      decoded = jwt.verify(refreshToken, jwtConfig().JwtRefreshSecret);
     } catch {
       return res
         .status(401)
@@ -199,11 +193,6 @@ exports.RefreshToken = async (req, res) => {
     session.refreshToken = newRefreshTokenHash;
     await session.save();
 
-    // Update the user's latest tokens in their database record
-    user.accessToken = accessToken;
-    user.refreshToken = newRefreshTokenHash;
-    await user.save();
-
     res.cookie("refreshToken", newRefreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -226,20 +215,13 @@ exports.RefreshToken = async (req, res) => {
 exports.LogOut = async (req, res) => {
   try {
     let refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
-    if (!refreshToken && req.headers.authorization) {
-      if (req.headers.authorization.startsWith("Bearer ")) {
-        refreshToken = req.headers.authorization.split(" ")[1];
-      } else {
-        refreshToken = req.headers.authorization;
-      }
-    }
 
     if (!refreshToken)
       return res.status(401).json({ message: "Refresh Token Is Required" });
 
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, jwtConfig().JwtSecret);
+      decoded = jwt.verify(refreshToken, jwtConfig().JwtRefreshSecret);
     } catch {
       return res.status(401).json({ message: "Invalid Refresh Token" });
     }
@@ -277,7 +259,10 @@ exports.LogOutAll = async (req, res) => {
 
     if (cookieRefreshToken) {
       try {
-        const decoded = jwt.verify(cookieRefreshToken, jwtConfig().JwtSecret);
+        const decoded = jwt.verify(
+          cookieRefreshToken,
+          jwtConfig().JwtRefreshSecret,
+        );
         if (decoded?.id) userId = decoded.id;
       } catch (_) {}
     }
@@ -289,7 +274,7 @@ exports.LogOutAll = async (req, res) => {
 
       const token = authHeader.split(" ")[1];
       try {
-        const decoded = jwt.verify(token, jwtConfig().JwtSecret);
+        const decoded = jwt.verify(token, jwtConfig().JwtAccessSecret);
         userId = decoded.id;
       } catch {
         return res
@@ -302,10 +287,6 @@ exports.LogOutAll = async (req, res) => {
       { user: userId, revoked: false },
       { $set: { revoked: true } },
     );
-
-    await UserSchema.findByIdAndUpdate(userId, {
-      $set: { accessToken: "", refreshToken: "" },
-    });
 
     res.clearCookie("refreshToken");
     return res

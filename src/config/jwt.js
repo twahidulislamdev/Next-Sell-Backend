@@ -1,6 +1,7 @@
 const jwtConfig = () => {
   return {
-    JwtSecret: process.env.JWT_SECRET,
+    JwtAccessSecret: process.env.ACCESS_TOKEN_SECRET,
+    JwtRefreshSecret: process.env.REFRESH_TOKEN_SECRET,
   };
 };
 

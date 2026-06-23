@@ -3,7 +3,7 @@ const { jwtConfig } = require("../config/jwt");
 
 // Generate Access Token
 exports.generateAccessToken = (user) => {
-  const { JwtSecret } = jwtConfig();
+  const { JwtAccessSecret } = jwtConfig();
   return jwt.sign(
     {
       id: user._id,
@@ -12,21 +12,21 @@ exports.generateAccessToken = (user) => {
       email: user.email,
       role: user.role,
     },
-    JwtSecret,
-    { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "15m" },
+    JwtAccessSecret,
+    { expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || "15m" },
   );
 };
 
 // Generate Refresh Token
 exports.generateRefreshToken = (user) => {
-  const { JwtSecret } = jwtConfig();
+  const { JwtRefreshSecret } = jwtConfig();
   return jwt.sign(
     {
       id: user._id,
       userId: user._id,
       role: user.role,
     },
-    JwtSecret,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d" },
+    JwtRefreshSecret,
+    { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || "7d" },
   );
 };
