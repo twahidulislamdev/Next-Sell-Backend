@@ -12,6 +12,12 @@ const {
 } = require("./auth.controller");
 const { verifyJwt, restrictTo } = require("./auth.middlewares");
 
+const validate = require("./auth.validation.middleware");
+const {
+  registerValidationSchema,
+  loginValidationSchema,
+} = require("./auth.validation");
+
 /**
  * @swagger
  * /api/v1/auth/signup:
@@ -52,7 +58,7 @@ const { verifyJwt, restrictTo } = require("./auth.middlewares");
  */
 
 // POST /api/v1/auth/signup
-router.post("/signup", SignUp);
+router.post("/signup", validate(registerValidationSchema), SignUp);
 
 // POST /api/v1/auth/verify-email
 router.post("/verify-email", VerifyOtp);
@@ -61,7 +67,7 @@ router.post("/verify-email", VerifyOtp);
 router.post("/resend-otp", ResendOtp);
 
 // POST /api/v1/auth/login
-router.post("/login", Login);
+router.post("/login", validate(loginValidationSchema), Login);
 
 // POST /api/v1/auth/refresh-token
 router.post("/refresh-token", RefreshToken);

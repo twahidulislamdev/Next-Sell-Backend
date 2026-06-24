@@ -42,11 +42,11 @@ const UserSchema = new Schema(
       type: Boolean,
       default: false,
     },
-    accessToken: {
+    refreshToken: {
       type: String,
       select: false,
     },
-    refreshToken: {
+    accessToken: {
       type: String,
       select: false,
     },

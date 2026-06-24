@@ -214,7 +214,7 @@ exports.RefreshToken = async (req, res) => {
 // ============ LogOut Controller =================
 exports.LogOut = async (req, res) => {
   try {
-    let refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
 
     if (!refreshToken)
       return res.status(401).json({ message: "Refresh Token Is Required" });
@@ -227,7 +227,6 @@ exports.LogOut = async (req, res) => {
     }
 
     const sessions = await Session.find({ user: decoded.id, revoked: false });
-
     let currentSession = null;
     for (const session of sessions) {
       const match = await bcrypt.compare(refreshToken, session.refreshToken);
@@ -305,7 +304,7 @@ exports.VerifyOtp = async (req, res) => {
 
     if (!user) return res.status(400).json({ message: "User Not Found" });
 
-    if (user.isVerified || user.isEmailVerified)
+    if (user.isVerified)
       return res.status(400).json({ message: "User Already Verified" });
 
     // Check OTP expiry first
@@ -324,7 +323,6 @@ exports.VerifyOtp = async (req, res) => {
     }
 
     user.isVerified = true;
-    user.isEmailVerified = true;
     user.otp = undefined;
     user.expireOtp = undefined;
 
