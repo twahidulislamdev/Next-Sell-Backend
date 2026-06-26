@@ -17,6 +17,7 @@ const {
   registerValidationSchema,
   loginValidationSchema,
 } = require("./auth.validation");
+const { registerLimiter, loginLimiter, refreshTokenLimiter } = require("./rateLimit.middleware");
 
 /**
  * @swagger
@@ -58,7 +59,7 @@ const {
  */
 
 // POST /api/v1/auth/signup
-router.post("/signup", validate(registerValidationSchema), SignUp);
+router.post("/signup",registerLimiter, validate(registerValidationSchema), SignUp);
 
 // POST /api/v1/auth/verify-email
 router.post("/verify-email", VerifyOtp);
@@ -67,10 +68,7 @@ router.post("/verify-email", VerifyOtp);
 router.post("/resend-otp", ResendOtp);
 
 // POST /api/v1/auth/login
-router.post("/login", validate(loginValidationSchema), Login);
-
-// POST /api/v1/auth/refresh-token
-router.post("/refresh-token", RefreshToken);
+router.post("/login", loginLimiter, validate(loginValidationSchema), Login);
 
 // POST /api/v1/auth/logout
 router.post("/logout", LogOut);
@@ -78,7 +76,10 @@ router.post("/logout", LogOut);
 // POST /api/v1/auth/logout-all
 router.post("/logout-all", LogOutAll);
 
-//
+// POST /api/v1/auth/refresh-token
+router.post("/refresh-token", refreshTokenLimiter, RefreshToken);
+
+// GET /api/v1/auth/admin/dashboard
 router.get("/admin/dashboard", verifyJwt, restrictTo("admin"));
 
 module.exports = router;

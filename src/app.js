@@ -4,6 +4,7 @@ const dbConnection = require("./config/dbConnection");
 const routes = require("./routes/index");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
+const { apiLimiter } = require("./modules/auth/rateLimit.middleware");
 
 // Enable CORS
 app.use(
@@ -16,6 +17,9 @@ app.use(cookieParser());
 
 // Getting Data From The Request Body
 app.use(express.json({ limit: "1mb" }));
+
+// Global API Rate Limiter (100 requests per IP per 24 hours)
+app.use("/api/v1", apiLimiter);
 
 // Base Route For All API Endpoints
 app.use("/api/v1", routes);
